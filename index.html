@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuel Price Analyzer</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent scrolling of the whole page */
+        }
+        #chart-tooltip {
+            transition: opacity 0.1s ease-in-out;
+        }
+        /* Custom popup design */
+        .leaflet-popup-content {
+            margin: 0;
+            width: 210px;
+        }
+        .leaflet-popup-content-wrapper {
+            background-color: #2d3748; /* bg-gray-800 */
+            color: #e2e8f0; /* text-gray-300 */
+            border-radius: 0.375rem;
+            border: 1px solid #4a5568;
+            box-shadow: none;
+        }
+        .leaflet-popup-tip {
+            background-color: #2d3748;
+        }
+        .leaflet-control-zoom-in, .leaflet-control-zoom-out {
+            background-color: #2d3748 !important;
+            color: #e2e8f0 !important;
+            border-radius: 0.5rem !important;
+        }
+        /* Scrollbar styling for sidebar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1a202c;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            border-radius: 10px;
+            border: 2px solid #1a202c;
+        }
+        /* File dropzone styling */
+        .dropzone-active {
+            border-color: #3b82f6; /* blue-500 */
+            background-color: #1f2937; /* gray-800 */
+        }
+        /* to hide arrows from the number input */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield; /* Firefox */
+        }
+        .custom-range-slider::-webkit-slider-runnable-track {
+                width: 100%;
+                height: 4px;
+                cursor: pointer;
+                background: #374151; /* Darker track: gray-700 */
+                border-radius: 5px;
+            }
+        .custom-range-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                height: 16px;
+                width: 16px;
+                border-radius: 50%;
+                background: #3b82f6; /* blue-500 */
+                cursor: pointer;
+                margin-top: -6px;
+                border: 2px solid #6b7280; /* Subdued border: gray-500 */
+            }
+        /* Firefox specific styles */
+        .custom-range-slider::-moz-range-track {
+                width: 100%;
+                height: 4px;
+                cursor: pointer;
+                background: #374151; /* Darker track: gray-700 */
+                border-radius: 5px;
+            }
+        .custom-range-slider::-moz-range-thumb {
+                height: 16px;
+                width: 16px;
+                border-radius: 50%;
+                background: #3b82f6; /* blue-500 */
+                cursor: pointer;
+                border: 2px solid #6b7280; /* Subdued border: gray-500 */
+            }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white flex flex-col h-screen">
+    <div id="chart-tooltip" class="fixed hidden bg-gray-900 text-white text-sm rounded-md shadow-lg p-2 border border-gray-600 z-[1200]" style="pointer-events: none;"></div>
+
+    <div id="upload-modal" class="fixed inset-0 bg-black bg-opacity-70 z-[1100] flex items-center justify-center hidden">
+        <div id="modal-panel" class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4 transform transition-all opacity-0 -translate-y-4">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold">Upload Provider Data</h2>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-6">
+                <div>
+                    <label for="provider-select-modal" class="block text-sm font-medium text-gray-300 mb-2">1. Select Fuel Provider</label>
+                    <select id="provider-select-modal" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option>Pilot Flying J</option>
+                        <option>Bobtail</option>
+                        <option>Mudflap</option>
+                        <option>Loves</option>
+                        <option>Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">2. Choose CSV File</label>
+                    <div id="dropzone" class="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-gray-500 transition-colors">
+                        <svg class="mx-auto h-12 w-12 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7.5l4.5-4.5 4.5 4.5M21 16.5l-4.5 4.5-4.5-4.5M7.5 3v13.5M16.5 21V7.5" />
+                        </svg>
+                        <p class="mt-2 text-gray-400">
+                            <span class="font-semibold text-blue-400">Click to select a file</span> or drag and drop
+                        </p>
+                        <p id="file-name-display" class="text-sm text-gray-500 mt-1"></p>
+                        <input type="file" id="file-upload-modal" class="hidden" accept=".csv">
+                        <p class="text-xs text-gray-500 mt-4 pt-4 border-t border-gray-700">
+                            CSV files must contain the following columns: <br>
+                            <code class="text-blue-400">station_name</code>, <code class="text-blue-400">city</code>, <code class="text-blue-400">state</code>, <code class="text-blue-400">latitude</code>, <code class="text-blue-400">longitude</code>, <code class="text-blue-400">retail_price</code>, <code class="text-blue-400">discounted_price</code>, <code class="text-blue-400">savings</code>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification-container" class="fixed bottom-5 right-5 z-[1000] flex flex-col items-end space-y-2"></div>
+
+    <header class="bg-gray-900 border-b border-gray-700 shadow-lg z-[1000]">
+        <div class="w-full px-4 py-1 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <label for="cluster-radius" class="block text-xs font-medium text-gray-300 whitespace-nowrap">Max Distance:</label>
+                    <div class="relative">
+                        <input id="cluster-radius" type="number" value="15" min="1" class="w-14 bg-transparent border-0 border-b-2 border-gray-500 text-center text-white pb-0.5 pr-5 text-sm focus:outline-none focus:ring-0 focus:border-blue-500 transition">
+                        <span class="absolute right-0 top-0 h-full flex items-center text-xs text-gray-400 pointer-events-none">mi</span>
+                    </div>
+                </div>
+                <div class="h-6 border-l border-gray-600"></div>
+                <div class="flex items-center space-x-2">
+                    <label class="block text-xs font-medium text-gray-300 whitespace-nowrap">State:</label>
+                    <div id="state-dropdown-container" class="relative">
+                        <input type="text" id="state-input" placeholder="All" class="w-16 bg-transparent border-0 border-b-2 border-gray-500 text-left text-white pb-0.5 text-sm focus:outline-none focus:ring-0 focus:border-blue-500 transition">
+                        <div id="state-dropdown-panel" class="absolute hidden mt-2 w-full bg-gray-800 border border-gray-600 rounded-md shadow-lg z-20 max-h-60 overflow-y-auto custom-scrollbar">
+                            </div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3 text-xs">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="hide-unclustered" class="sr-only peer">
+                        <div class="relative w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
+                        <span class="ms-1.5 font-medium text-gray-300">Hide Unpaired</span>
+                    </label>
+                    <label id="triads-only-container" class="inline-flex items-center cursor-pointer hidden">
+                        <input type="checkbox" id="show-triads-only" class="sr-only peer" disabled>
+                        <div class="relative w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
+                        <span class="ms-1.5 font-medium text-gray-300">Triads Only</span>
+                    </label>
+                    <label id="tetrads-only-container" class="inline-flex items-center cursor-pointer hidden">
+                        <input type="checkbox" id="show-tetrads-only" class="sr-only peer" disabled>
+                        <div class="relative w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
+                        <span class="ms-1.5 font-medium text-gray-300">Tetrads Only</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <div class="relative group cursor-pointer">
+                    <div id="unpaired-counter" class="text-sm"></div>
+                    <div id="unpaired-tooltip" class="absolute hidden group-hover:block top-full left-1/2 -translate-x-1/2 mt-1 w-max bg-gray-800 text-gray-300 text-xs rounded-md p-2 border border-gray-600 shadow-lg z-30">
+                        </div>
+                </div>
+                <div class="h-6 border-l border-gray-600 stat-separator hidden"></div>
+                <div id="paired-only-counter" class="text-sm"></div>
+                <div class="h-6 border-l border-gray-600 stat-separator hidden"></div>
+                <div id="pair-links-counter" class="text-sm"></div>
+                <div class="h-6 border-l border-gray-600 stat-separator hidden"></div>
+                <div id="triad-groups-counter" class="text-sm"></div>
+                <div class="h-6 border-l border-gray-600 stat-separator hidden"></div>
+                <div id="tetrad-groups-counter" class="text-sm"></div>
+                <div class="h-6 border-l border-gray-600"></div>
+                <div id="file-upload-section" class="flex items-center space-x-2 flex-nowrap">
+                    <span class="text-xs text-gray-500 italic">No datasets loaded</span>
+                </div>
+                <div class="h-6 border-l border-gray-600"></div>
+                <button id="open-modal-btn" class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1 px-3 text-xs rounded-md transition duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex overflow-hidden">
+        <div id="map" class="w-3/5 h-full bg-gray-800"></div>
+
+        <aside class="w-2/5 bg-gray-900 h-full flex flex-col border-l border-gray-700">
+            <div class="p-2 bg-gray-900 border-b border-gray-700 flex items-center justify-between space-x-4">
+                
+                <div class="flex items-center space-x-2">
+                    <label for="analysis-metric-select" class="text-xs font-medium text-gray-300 whitespace-nowrap">Metric:</label>
+                    <select id="analysis-metric-select" class="w-40 bg-gray-700 border border-gray-600 rounded-md py-1 px-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="discounted" selected>Discounted Price</option>
+                        <option value="retail">Retail Price</option>
+                        <option value="savings">Savings</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="infographics" class="flex-grow p-2 overflow-y-auto custom-scrollbar">
+                <div id="info-placeholder" class="text-center text-gray-500 pt-10">
+                    <svg class="mx-auto h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2z" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-400">No Data</h3>
+                    <p class="mt-1 text-sm text-gray-500">Upload CSV files to begin analysis.</p>
+                </div>
+                <div id="info-content" class="hidden space-y-3">
+                    </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- MAP INITIALIZATION ---
+            const map = L.map('map', {
+                center: [39.8283, -98.5795], // Center of the USA
+                zoom: 5,
+                zoomControl: false // Custom zoom control position
+            });
+
+            L.control.zoom({
+                position: 'bottomright'
+            }).addTo(map);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+            
+            // --- STATE MANAGEMENT ---
+           const state = {
+                    stationData: {}, // { "ProviderName": [station, station, ...] }
+                    markers: L.markerClusterGroup({
+                        iconCreateFunction: function(cluster) {
+                        const count = cluster.getChildCount(); // Get the total number of stations in the cluster
+
+                        let c = ' marker-cluster-';
+                        if (count < 10) { c += 'small'; } 
+                        else if (count < 100) { c += 'medium'; } 
+                        else { c += 'large'; }
+                        return new L.DivIcon({ html: '<div><span>' + count + '</span></div>', className: 'marker-cluster' + c, iconSize: new L.Point(40, 40) });
+                    },
+                        maxClusterRadius: 80,
+                        disableClusteringAtZoom: 12
+                    }),
+                    linesLayer: L.layerGroup(),
+                    tempLinesLayer: L.layerGroup(), 
+                    hideUnclustered: false,
+                    clusterRadius: 15,
+                    showTriadsOnly: false,
+                    showTetradsOnly: false,
+                    analysisMetric: 'discounted',
+                    competitiveFilter: 'all',
+                    showLines: false, 
+                    lineOpacity: 0.3,
+                    selectedState: 'all'
+                };
+
+                map.addLayer(state.markers);
+                map.addLayer(state.linesLayer);
+                map.addLayer(state.tempLinesLayer);
+
+            map.on('click', () => {
+                state.tempLinesLayer.clearLayers();
+            });
+
+            const lineControl = L.Control.extend({
+                options: {
+                    position: 'bottomleft'
+                },
+                onAdd: function (map) {
+                    const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control-custom bg-gray-900/70 backdrop-blur-sm border border-gray-700 p-3 rounded-lg shadow-lg w-48 space-y-2');
+                    
+                    container.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <label for="show-lines-toggle" class="font-medium text-gray-200 text-sm">Links</label>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="show-lines-toggle" class="sr-only peer">
+                                <div class="relative w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                        <div id="opacity-slider-container" class="flex items-center space-x-2 transition-opacity">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 9.563C9 9.254 9.254 9 9.563 9h4.874c.31 0 .563.254.563.563v4.874c0 .31-.254.563-.563.563H9.564A.562.562 0 019 14.437V9.564z" stroke-dasharray="2 2" />
+                            </svg>
+                            <input type="range" id="opacity-slider" min="0.1" max="1" step="0.05" value="0.3" class="w-full h-1.5 rounded-lg appearance-none cursor-pointer custom-range-slider">
+                            <svg class="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+                               <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2z" />
+                            </svg>
+                        </div>
+                    `;
+
+                    L.DomEvent.disableClickPropagation(container);
+                    L.DomEvent.disableScrollPropagation(container);
+                    
+                    const sliderContainer = container.querySelector('#opacity-slider-container');
+                    const slider = container.querySelector('#opacity-slider');
+                    const toggle = container.querySelector('#show-lines-toggle');
+
+                    const updateSliderState = () => {
+                        if (toggle.checked) {
+                             sliderContainer.classList.remove('opacity-40', 'pointer-events-none');
+                        } else {
+                            sliderContainer.classList.add('opacity-40', 'pointer-events-none');
+                        }
+                    };
+
+                    slider.addEventListener('input', (e) => {
+                        state.lineOpacity = parseFloat(e.target.value);
+                        applyVisibilityFilter(); 
+                    });
+
+                    toggle.addEventListener('change', (e) => {
+                        state.showLines = e.target.checked;
+                        state.tempLinesLayer.clearLayers();
+                        updateSliderState();
+                        updateLineVisibility(); 
+                    });
+
+                    updateSliderState();
+
+                    return container;
+                }
+            });
+            
+            map.addControl(new lineControl());
+
+            // --- ICON CONFIGURATION ---
+            const providerIcons = {
+                'Bobtail': 'https://i.postimg.cc/8zyzSMgM/bobtail.png',
+                'Pilot Flying J': 'https://i.postimg.cc/XvwvGJrR/pilot-logo.png',
+                'Mudflap': 'https://i.postimg.cc/X74jBQV9/mudlap.png',
+                'Loves': 'https://i.postimg.cc/5tw38yNH/LOVES-LOGO.png',
+                'Other': 'https://i.postimg.cc/pXf9q7s0/default-logo.png'
+            };
+
+
+                const providerColors = { 
+                                'Pilot Flying J': '#ef4444', /* Red */
+                                'Bobtail': '#f97316',      /* Orange */
+                                'Mudflap': '#22c55e',      /* Green */
+                                'Loves': '#f59e0b',        /* Amber */
+                                'TA': '#3b82f6',          /* Blue */
+                                'Other': '#6b7280'        /* Gray */
+                            };
+
+                            const stateCoordinates = {
+    'AL': [32.806671, -86.791130, 7], 'AK': [61.370716, -152.404419, 4], 'AZ': [33.729759, -111.431221, 7], 'AR': [34.969704, -92.373123, 7],
+    'CA': [36.116203, -119.681564, 6], 'CO': [39.059811, -105.311104, 7], 'CT': [41.597782, -72.755371, 9], 'DE': [39.318523, -75.507141, 9],
+    'FL': [27.766279, -81.686783, 7], 'GA': [33.040619, -83.643074, 7], 'HI': [21.094318, -157.498337, 7], 'ID': [44.240459, -114.478828, 6],
+    'IL': [40.349457, -88.986137, 7], 'IN': [39.849426, -86.258278, 7], 'IA': [42.011539, -93.210526, 7], 'KS': [38.526600, -96.726486, 7],
+    'KY': [37.668140, -84.670067, 7], 'LA': [31.169546, -91.867805, 7], 'ME': [44.693947, -69.381927, 7], 'MD': [39.063946, -76.802101, 8],
+    'MA': [42.230171, -71.530106, 8], 'MI': [43.326618, -84.536095, 7], 'MN': [45.694454, -93.900192, 6], 'MS': [32.741646, -89.678696, 7],
+    'MO': [38.456085, -92.288368, 7], 'MT': [46.921925, -110.454353, 6], 'NE': [41.125370, -98.268082, 7], 'NV': [38.313515, -117.055374, 6],
+    'NH': [43.452492, -71.563896, 8], 'NJ': [40.298904, -74.521011, 8], 'NM': [34.840515, -106.248482, 7], 'NY': [42.165726, -74.948051, 7],
+    'NC': [35.630066, -79.806419, 7], 'ND': [47.528912, -99.784012, 7], 'OH': [40.388783, -82.764915, 7], 'OK': [35.565342, -96.928917, 7],
+    'OR': [44.572021, -122.070938, 6], 'PA': [40.590752, -77.209755, 7], 'RI': [41.680893, -71.511780, 9], 'SC': [33.856892, -80.945007, 7],
+    'SD': [44.299782, -99.438828, 7], 'TN': [35.747845, -86.692345, 7], 'TX': [31.054487, -97.563461, 6], 'UT': [40.150032, -111.862434, 7],
+    'VT': [44.045876, -72.710686, 8], 'VA': [37.769337, -78.169968, 7], 'WA': [47.400902, -121.490494, 7], 'WV': [38.491226, -80.954453, 7],
+    'WI': [44.268543, -89.616508, 7], 'WY': [42.755966, -107.302490, 7]
+};
+
+function updateStateSelector(filter = '') {
+    const panel = document.getElementById('state-dropdown-panel');
+    const input = document.getElementById('state-input');
+    const allStationsRaw = Object.values(state.stationData).flat();
+    const uniqueStates = [...new Set(allStationsRaw.map(s => s.state))].sort();
+
+    // Clear previous options
+    panel.innerHTML = '';
+
+    // Function to handle selecting an option
+    const selectOption = (value, text) => {
+        state.selectedState = value;
+        input.value = text;
+        panel.classList.add('hidden'); // Close dropdown
+        updateMapAndUI();
+
+        // Trigger map zoom
+        if (value === 'all') {
+            map.setView([39.8283, -98.5795], 5);
+        } else {
+            const coords = stateCoordinates[value];
+            if (coords) map.setView([coords[0], coords[1]], coords[2]);
+        }
+    };
+
+    // Create and add the "All States" option
+    const allStatesDiv = document.createElement('div');
+    allStatesDiv.textContent = 'All';
+    allStatesDiv.className = 'px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-600';
+    allStatesDiv.addEventListener('mousedown', () => selectOption('all', '')); // Use mousedown to fire before input's blur event
+    panel.appendChild(allStatesDiv);
+
+    // Filter and add state options
+    const filteredStates = uniqueStates.filter(s => s.toLowerCase().startsWith(filter.toLowerCase()));
+
+    filteredStates.forEach(s => {
+        const optionDiv = document.createElement('div');
+        optionDiv.textContent = s;
+        optionDiv.className = 'px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-600';
+        optionDiv.addEventListener('mousedown', () => selectOption(s, s));
+        panel.appendChild(optionDiv);
+    });
+
+    // Update input placeholder/value based on current selection
+    if (state.selectedState === 'all') {
+        input.value = '';
+        input.placeholder = 'All';
+    } else {
+        input.value = state.selectedState;
+    }
+}
+
+            function createProviderIcon(imageUrl) {
+                return L.icon({
+                    iconUrl: imageUrl,
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 30],
+                    popupAnchor: [0, -30],
+                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                    shadowSize: [41, 41],
+                    shadowAnchor: [12, 41]
+                });
+            }
+
+            // --- DOM ELEMENTS ---
+            const radiusSlider = document.getElementById('cluster-radius');
+            const hideCheckbox = document.getElementById('hide-unclustered');
+            const showTriadsCheckbox = document.getElementById('show-triads-only');
+            const infoPlaceholder = document.getElementById('info-placeholder');
+            const infoContent = document.getElementById('info-content');
+            let allMarkers = [];
+
+            // --- MODAL & FILE UPLOAD ELEMENTS ---
+            const modal = document.getElementById('upload-modal');
+            const modalPanel = document.getElementById('modal-panel');
+            const openModalBtn = document.getElementById('open-modal-btn');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const fileInputModal = document.getElementById('file-upload-modal');
+            const providerSelectModal = document.getElementById('provider-select-modal');
+            const dropzone = document.getElementById('dropzone');
+            const fileNameDisplay = document.getElementById('file-name-display');
+
+            // --- NOTIFICATION SYSTEM ---
+            function showNotification(message, level = 'info') {
+                const container = document.getElementById('notification-container');
+                const notification = document.createElement('div');
+                
+                let bgColor, textColor;
+                switch(level) {
+                    case 'error': bgColor = 'bg-red-600'; textColor = 'text-white'; break;
+                    case 'warning': bgColor = 'bg-yellow-500'; textColor = 'text-black'; break;
+                    default: bgColor = 'bg-blue-600'; textColor = 'text-white';
+                }
+
+                notification.className = `p-3 rounded-md shadow-lg ${bgColor} ${textColor} text-sm transition-all duration-300 opacity-0 transform translate-y-2`;
+                notification.textContent = message;
+                
+                container.appendChild(notification);
+                
+                setTimeout(() => notification.classList.remove('opacity-0', 'translate-y-2'), 10);
+                setTimeout(() => {
+                    notification.classList.add('opacity-0');
+                    notification.addEventListener('transitionend', () => notification.remove());
+                }, 5000);
+            }
+
+            // --- MODAL LOGIC ---
+            function openModal() {
+                modal.classList.remove('hidden');
+                setTimeout(() => { modalPanel.classList.remove('opacity-0', '-translate-y-4'); }, 10);
+            }
+
+            function closeModal() {
+                modalPanel.classList.add('opacity-0', '-translate-y-4');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    fileNameDisplay.textContent = '';
+                }, 300);
+            }
+
+            openModalBtn.addEventListener('click', openModal);
+            closeModalBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+            // --- FILE HANDLING ---
+            function handleFile(file) {
+                if (Object.keys(state.stationData).length >= 4) {
+                    showNotification('Error: A maximum of 4 provider datasets can be loaded.', 'error');
+                    closeModal();
+                    return;
+                 }
+                 if (file && file.type === 'text/csv') {
+                    const providerName = providerSelectModal.value;
+                    parseCSV(file, providerName);
+                    closeModal();
+                } else {
+                    showNotification('Error: Please select a valid .csv file.', 'error');
+                }
+            }
+            
+            dropzone.addEventListener('click', () => fileInputModal.click());
+            fileInputModal.addEventListener('change', () => {
+                if (fileInputModal.files.length > 0) {
+                     fileNameDisplay.textContent = fileInputModal.files[0].name;
+                     handleFile(fileInputModal.files[0]);
+                }
+                 fileInputModal.value = '';
+            });
+            
+            dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dropzone-active'); });
+            dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('dropzone-active'); });
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dropzone-active');
+                if (e.dataTransfer.files.length > 0) {
+                     fileNameDisplay.textContent = e.dataTransfer.files[0].name;
+                     handleFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            function parseCSV(file, provider) {
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        try {
+                            const data = results.data;
+                            const errors = results.errors;
+
+                            if (errors.length > 0) {
+                                console.error("Papa Parse encountered errors:", errors);
+                                showNotification(`Error reading CSV structure. Check console for details.`, 'error');
+                            }
+
+                            if (!data || data.length === 0) {
+                                showNotification('Error: CSV file has no data after parsing.', 'error');
+                                return;
+                            }
+                            
+                            const requiredHeaders = ['latitude', 'longitude', 'station_name', 'retail_price', 'discounted_price', 'savings'];
+                            const fileHeaders = Object.keys(data[0]).map(h => h.toLowerCase().trim());
+                            const missingHeaders = requiredHeaders.filter(h => !fileHeaders.includes(h));
+
+                            if (missingHeaders.length > 0) {
+                                showNotification(`Error: Missing required columns: ${missingHeaders.join(', ')}`, 'error');
+                                return;
+                            }
+
+                            const processedData = [];
+                            let discardedRows = 0;
+
+                            data.forEach((row, index) => {
+                                const lat = parseFloat(row.latitude);
+                                const lon = parseFloat(row.longitude);
+
+                                if (isNaN(lat) || isNaN(lon)) {
+                                    discardedRows++;
+                                } else {
+                                    let discountedPrice = parseFloat(row.discounted_price);
+                                    const retailPrice = parseFloat(row.retail_price);
+
+                                    // If discounted price is not a valid positive number, use retail price instead.
+                                    if (isNaN(discountedPrice) || discountedPrice <= 0) {
+                                        discountedPrice = retailPrice;
+                                    }
+                                    
+                                    // If, after all checks, the price is still invalid, discard the row.
+                                    if (isNaN(discountedPrice)) {
+                                         discardedRows++;
+                                    } else {
+                                        processedData.push({
+                                            provider: provider,
+                                            lat: lat,
+                                            lon: lon,
+                                            name: row.station_name,
+                                            retail: retailPrice,
+                                            discounted: discountedPrice,
+                                            savings: parseFloat(row.savings),
+                                            city: row.city,
+                                            state: row.state,
+                                            id: `${provider}-${row.latitude}-${row.longitude}`
+                                        });
+                                    }
+                                }
+                            });
+                            
+                            const totalRows = data.length;
+                            if (discardedRows > 0) {
+                                showNotification(`${discardedRows} out of ${totalRows} rows were discarded due to invalid coordinates or prices.`, 'warning');
+                            } else {
+                                showNotification(`Successfully loaded ${totalRows} stations for ${provider}.`, 'info');
+                            }
+
+                            if (!state.stationData[provider]) {
+                                state.stationData[provider] = [];
+                            }
+                            state.stationData[provider] = [...state.stationData[provider], ...processedData];
+                            
+                            if (Object.keys(state.stationData).length === 4) {
+                                // First, explicitly turn OFF Triads Only mode
+                                state.showTriadsOnly = false;
+                                document.getElementById('show-triads-only').checked = false;
+
+                                // Then, turn ON Tetrads Only mode
+                                state.showTetradsOnly = true;
+                                document.getElementById('show-tetrads-only').checked = true;
+                                state.competitiveFilter = 'tetrads';
+                                showNotification('Four providers loaded. Switched to Tetrads Only mode.', 'info');
+                            } else if (Object.keys(state.stationData).length === 3) {
+                                state.showTriadsOnly = true;
+                                document.getElementById('show-triads-only').checked = true;
+                                state.competitiveFilter = 'triads';
+                                showNotification('Three providers loaded. Switched to Triads Only mode.', 'info');
+                            }
+
+                            updateMapAndUI();
+
+                        } catch (error) {
+                             showNotification('An unexpected error occurred during processing.', 'error');
+                             console.error("Processing Error:", error);
+                        }
+                    },
+                    error: function(err) {
+                        showNotification('Fatal error parsing CSV file. The file may be corrupt.', 'error');
+                        console.error("Papa Parse Fatal Error:", err);
+                    }
+                });
+            }
+
+            // --- UTILITY FUNCTIONS ---
+            const milesToMeters = (miles) => miles * 1609.34;
+
+            function findCompetitivePairs(allStations) {
+                const radiusMeters = milesToMeters(state.clusterRadius);
+                
+                allStations.forEach(s => {
+                    s.competitors = [];
+                    s.triads = [];
+                    s.tetrads = [];
+                    s.isPaired = false;
+                    s.isTriadPaired = false;
+                    s.isTetradPaired = false;
+                });
+
+                const providerNames = Object.keys(state.stationData);
+                const stationsByProvider = {};
+                providerNames.forEach(p => {
+                    stationsByProvider[p] = allStations.filter(s => s.provider === p);
+                });
+
+                if (providerNames.length === 4) {
+    const stationsA = stationsByProvider[providerNames[0]];
+    const stationsB = stationsByProvider[providerNames[1]];
+    const stationsC = stationsByProvider[providerNames[2]];
+    const stationsD = stationsByProvider[providerNames[3]];
+
+    for (const sA of stationsA) {
+        const latLngA = L.latLng(sA.lat, sA.lon);
+        for (const sB of stationsB) {
+            const latLngB = L.latLng(sB.lat, sB.lon);
+            if (latLngA.distanceTo(latLngB) > radiusMeters) continue;
+
+            for (const sC of stationsC) {
+                const latLngC = L.latLng(sC.lat, sC.lon);
+                if (latLngA.distanceTo(latLngC) > radiusMeters || latLngB.distanceTo(latLngC) > radiusMeters) continue;
+
+                for (const sD of stationsD) {
+                    const latLngD = L.latLng(sD.lat, sD.lon);
+                    // Check all remaining distances to ensure all 6 connections exist
+                    if (latLngA.distanceTo(latLngD) <= radiusMeters && latLngB.distanceTo(latLngD) <= radiusMeters && latLngC.distanceTo(latLngD) <= radiusMeters) {
+                        sA.isTetradPaired = sB.isTetradPaired = sC.isTetradPaired = sD.isTetradPaired = true;
+                        sA.tetrads.push([sB, sC, sD]);
+                        sB.tetrads.push([sA, sC, sD]);
+                        sC.tetrads.push([sA, sB, sD]);
+                        sD.tetrads.push([sA, sB, sC]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+                if (providerNames.length >= 3) {
+                    // Combination logic to find all unique sets of 3 providers
+                    for (let i = 0; i < providerNames.length; i++) {
+                        for (let j = i + 1; j < providerNames.length; j++) {
+                            for (let k = j + 1; k < providerNames.length; k++) {
+                                const [pA, pB, pC] = [providerNames[i], providerNames[j], providerNames[k]];
+                                for (const stationA of stationsByProvider[pA]) {
+                                    const latLngA = L.latLng(stationA.lat, stationA.lon);
+                                    const nearbyB = stationsByProvider[pB].filter(s => latLngA.distanceTo(L.latLng(s.lat, s.lon)) <= radiusMeters);
+                                    const nearbyC = stationsByProvider[pC].filter(s => latLngA.distanceTo(L.latLng(s.lat, s.lon)) <= radiusMeters);
+
+                                    if (nearbyB.length > 0 && nearbyC.length > 0) {
+                                        for (const stationB of nearbyB) {
+                                            for (const stationC of nearbyC) {
+                                                if (L.latLng(stationB.lat, stationB.lon).distanceTo(L.latLng(stationC.lat, stationC.lon)) <= radiusMeters) {
+                                                    stationA.isTriadPaired = true; stationB.isTriadPaired = true; stationC.isTriadPaired = true;
+                                                    stationA.triads.push([stationB, stationC]);
+                                                    stationB.triads.push([stationA, stationC]);
+                                                    stationC.triads.push([stationA, stationB]);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (let i = 0; i < allStations.length; i++) {
+                    const stationA = allStations[i];
+                    for (let j = i + 1; j < allStations.length; j++) {
+                        const stationB = allStations[j];
+                        if (stationA.provider === stationB.provider) continue;
+
+                        const distance = L.latLng(stationA.lat, stationA.lon).distanceTo(L.latLng(stationB.lat, stationB.lon));
+                        if (distance <= radiusMeters) {
+                            stationA.isPaired = true;
+                            stationB.isPaired = true;
+                            stationA.competitors.push(stationB);
+                            stationB.competitors.push(stationA);
+                        }
+                    }
+                }
+            }
+
+            // --- MAP & UI UPDATES ---
+            function updateMapAndUI() {
+                state.markers.clearLayers();
+                allMarkers = [];
+                // Get the raw, unfiltered list of all stations
+                const allStationsRaw = Object.values(state.stationData).flat();
+
+                // Filter the list based on the selected state, or use the full list if 'all' is selected
+                const allStations = state.selectedState === 'all'
+                    ? allStationsRaw
+                    : allStationsRaw.filter(station => station.state === state.selectedState);
+                const providerCount = Object.keys(state.stationData).length;
+
+                // Show/hide the toggles based on provider count
+                document.getElementById('triads-only-container').classList.toggle('hidden', providerCount < 3);
+                document.getElementById('tetrads-only-container').classList.toggle('hidden', providerCount < 4);
+
+                // Enable/disable the "Upload Data" button
+                const openModalBtn = document.getElementById('open-modal-btn');
+                openModalBtn.disabled = providerCount >= 4;
+                openModalBtn.classList.toggle('opacity-50', providerCount >= 4);
+                openModalBtn.classList.toggle('cursor-not-allowed', providerCount >= 4);
+                
+                if (allStations.length > 0) {
+                    findCompetitivePairs(allStations);
+                }
+
+                // --- Calculate Statistics ---
+                const unpairedByProvider = {};
+                Object.keys(state.stationData).forEach(p => { unpairedByProvider[p] = 0; });
+
+                const unpairedCount = allStations.filter(s => {
+                    const isUnpaired = !s.isPaired && !s.isTriadPaired && !s.isTetradPaired;
+                    if (isUnpaired) unpairedByProvider[s.provider]++;
+                    return isUnpaired;
+                }).length;
+
+                const pairedOnlyCount = allStations.filter(s => s.isPaired && !s.isTriadPaired && !s.isTetradPaired).length;
+
+                const pairLinks = new Set();
+                allStations.forEach(s => s.isPaired && s.competitors.forEach(c => pairLinks.add([s.id, c.id].sort().join('|'))));
+                
+                const triadGroups = new Set();
+                allStations.forEach(s => s.isTriadPaired && s.triads.forEach(p => triadGroups.add([s.id, p[0].id, p[1].id].sort().join('|'))));
+                
+                const tetradGroups = new Set();
+                allStations.forEach(s => s.isTetradPaired && s.tetrads.forEach(p => tetradGroups.add([s.id, p[0].id, p[1].id, p[2].id].sort().join('|'))));
+
+                // --- Update UI Counters ---
+                const counters = {
+                    'unpaired-counter': { value: unpairedCount, label: 'Unpaired', color: 'yellow-400' },
+                    'paired-only-counter': { value: pairedOnlyCount, label: 'in Pairs', color: 'blue-400' },
+                    'pair-links-counter': { value: pairLinks.size, label: 'Pair Links', color: 'red-400' },
+                    'triad-groups-counter': { value: triadGroups.size, label: 'Triads', color: 'green-400' },
+                    'tetrad-groups-counter': { value: tetradGroups.size, label: 'Tetrads', color: 'blue-400' },
+                };
+
+                const separators = document.querySelectorAll('.stat-separator');
+                if (allStations.length > 0) {
+                    Object.entries(counters).forEach(([id, {value, label, color}]) => {
+                        const el = document.getElementById(id);
+                        if (el) {
+                            // This line is updated for smaller fonts
+                            el.innerHTML = `<span class="font-semibold text-sm text-${color}">${value}</span> <span class="text-[10px] text-gray-500">${label}</span>`;
+                        }
+                    });
+                    separators.forEach(sep => sep.classList.remove('hidden'));
+                } else {
+                    Object.keys(counters).forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.innerHTML = '';
+                    });
+                    separators.forEach(sep => sep.classList.add('hidden'));
+                }
+                
+                // Hide Tetrad counter and its separator if provider count < 4
+                const tetradCounter = document.getElementById('tetrad-groups-counter');
+                if (tetradCounter) {
+                    const tetradSeparator = tetradCounter.previousElementSibling;
+                    const shouldHide = providerCount < 4;
+                    tetradCounter.classList.toggle('hidden', shouldHide);
+                    if (tetradSeparator && tetradSeparator.classList.contains('stat-separator')) {
+                        tetradSeparator.classList.toggle('hidden', shouldHide);
+                    }
+                }
+
+                // Update tooltip
+                const tooltipEl = document.getElementById('unpaired-tooltip');
+                let tooltipHtml = '<div class="font-bold text-white mb-1 border-b border-gray-700 pb-1">Unpaired by Provider</div>';
+                Object.entries(unpairedByProvider).forEach(([p, c]) => { tooltipHtml += `<div class="flex justify-between items-center space-x-4"><span>${p}</span><span class="font-mono font-semibold">${c.toLocaleString()}</span></div>`; });
+                tooltipEl.innerHTML = tooltipHtml;
+
+                // --- Manage Checkbox States ---
+                const showTriadsCheckbox = document.getElementById('show-triads-only');
+                showTriadsCheckbox.disabled = providerCount < 3;
+                if(showTriadsCheckbox.disabled) { showTriadsCheckbox.checked = false; state.showTriadsOnly = false; }
+
+                const showTetradsCheckbox = document.getElementById('show-tetrads-only');
+                showTetradsCheckbox.disabled = providerCount < 4;
+                if(showTetradsCheckbox.disabled) { showTetradsCheckbox.checked = false; state.showTetradsOnly = false; }
+
+
+                allStations.forEach(station => {
+                    allMarkers.push(createStationMarker(station));
+                });
+
+                applyVisibilityFilter();
+                updateProviderList();
+                renderAnalysisSidebar(allStations);
+                updateLineVisibility();
+            }
+
+            function createStationMarker(station) {
+                const iconUrl = providerIcons[station.provider] || providerIcons['Other'];
+                const customIcon = createProviderIcon(iconUrl);
+                const marker = L.marker([station.lat, station.lon], { icon: customIcon });
+
+                const retailPrice = station.retail || 0;
+                const savingsAmount = station.savings || 0;
+                const finalDiscountedPrice = station.discounted || retailPrice;
+
+                const popupContent = `
+                    <div class="bg-gray-800 text-gray-300 text-sm font-sans">
+                        <div class="p-2 bg-gray-900/50">
+                            <h3 class="font-bold text-base text-blue-400 leading-tight mb-0">${station.name}</h3>
+                            <p class="text-xs text-gray-400 leading-tight">${station.city}, ${station.state}</p>
+                        </div>
+                        <div class="p-2">
+                            <div class="flex items-center mb-2">
+                                <img src="${iconUrl}" class="w-5 h-5 mr-2 rounded-sm">
+                                <span class="font-semibold text-base">${station.provider}</span>
+                            </div>
+                            <div class="space-y-1 text-sm">
+                                <div class="flex justify-between items-center"><span class="text-gray-400">Retail Price</span><span class="font-mono">$${retailPrice.toFixed(2)}</span></div>
+                                <div class="flex justify-between items-center"><span class="text-gray-400">Savings</span><span class="font-mono">-$${savingsAmount.toFixed(2)}</span></div>
+                            </div>
+                            <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-700">
+                                <span class="font-bold text-base text-white">Discounted Price</span>
+                                <span class="font-mono font-bold text-lg text-green-400">$${finalDiscountedPrice.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>`;
+                marker.bindPopup(popupContent);
+                marker.stationData = station;
+
+                marker.on('click', (e) => {
+    if (state.showLines) return; // If lines are already visible, do nothing
+
+    L.DomEvent.stopPropagation(e);
+    state.tempLinesLayer.clearLayers();
+
+    const currentOpacity = state.lineOpacity;
+    const fillOpacity = Math.max(0.05, currentOpacity * 0.15);
+
+    // Check for the highest-level grouping first
+    if (station.isTetradPaired && station.tetrads.length > 0) {
+        station.tetrads.forEach(partners => {
+            const allPoints = [station, ...partners];
+
+            // Sort points by angle around their centroid to form a valid polygon
+            let totalLat = 0, totalLon = 0;
+            allPoints.forEach(p => { totalLat += p.lat; totalLon += p.lon; });
+            const centerLat = totalLat / 4;
+            const centerLon = totalLon / 4;
+            allPoints.sort((a, b) => {
+                const angleA = Math.atan2(a.lat - centerLat, a.lon - centerLon);
+                const angleB = Math.atan2(b.lat - centerLat, b.lon - centerLon);
+                return angleA - angleB;
+            });
+
+            const sortedCoords = allPoints.map(p => [p.lat, p.lon]);
+
+            L.polygon(sortedCoords, { color: '#3b82f6', weight: 2, opacity: currentOpacity, fillOpacity: fillOpacity }).addTo(state.tempLinesLayer);
+        });
+    } else if (station.isTriadPaired && station.triads.length > 0) {
+        station.triads.forEach(partners => {
+            const points = [[station.lat, station.lon], [partners[0].lat, partners[0].lon], [partners[1].lat, partners[1].lon]];
+            L.polygon(points, { color: '#16a34a', weight: 2, opacity: currentOpacity, fillOpacity: fillOpacity }).addTo(state.tempLinesLayer);
+        });
+    } else if (station.isPaired) {
+         station.competitors.forEach(competitor => {
+             L.polyline([[station.lat, station.lon], [competitor.lat, competitor.lon]], { color: '#e74c3c', weight: 2, opacity: currentOpacity, dashArray: '5, 5' }).addTo(state.tempLinesLayer);
+         });
+    }
+
+    map.invalidateSize();
+});
+
+                return marker;
+            }
+            
+            function updateProviderList() {
+                const container = document.getElementById('file-upload-section');
+                container.innerHTML = (Object.keys(state.stationData).length === 0) 
+                    ? `<span class="text-xs text-gray-500 italic">No datasets loaded</span>` 
+                    : '';
+
+                Object.entries(state.stationData).forEach(([provider, data]) => {
+                    const iconUrl = providerIcons[provider] || providerIcons['Other'];
+                    const pill = document.createElement('div');
+                    // This line is updated for a smaller pill
+                    pill.className = 'flex items-center bg-gray-700 text-xs font-medium pl-1.5 pr-1.5 py-0.5 rounded-full';
+                    pill.innerHTML = `
+                        <img src="${iconUrl}" class="w-4 h-4 mr-1.5 rounded-full object-cover">
+                        <span>${provider} (${data.length})</span>
+                        <button data-provider="${provider}" class="remove-btn ml-1.5 text-gray-400 hover:text-white hover:bg-gray-600 rounded-full p-0.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        </button>`;
+                    container.appendChild(pill);
+                });
+
+                container.querySelectorAll('.remove-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const providerToRemove = e.currentTarget.dataset.provider;
+                        delete state.stationData[providerToRemove];
+                        const providerCount = Object.keys(state.stationData).length;
+
+                        if (providerCount < 4) {
+                             if (state.showTetradsOnly) {
+                                showNotification('Provider count is less than four. Reverting from Tetrads mode.', 'info');
+                            }
+                            state.showTetradsOnly = false;
+                            document.getElementById('show-tetrads-only').checked = false;
+                        }
+                        if (providerCount < 3) {
+                            if (state.showTriadsOnly) {
+                                showNotification('Provider count is less than three. Reverting from Triads mode.', 'info');
+                            }
+                            state.showTriadsOnly = false;
+                            document.getElementById('show-triads-only').checked = false;
+                        }
+                        
+                        // Reset competitive filter if active mode is no longer possible
+                        if ((state.competitiveFilter === 'tetrads' && providerCount < 4) || (state.competitiveFilter === 'triads' && providerCount < 3)) {
+                            state.competitiveFilter = 'all';
+                        }
+                        
+                        updateMapAndUI();
+                        showNotification(`Removed ${providerToRemove} dataset.`, 'info');
+                    });
+                });
+            }
+
+            // --- ANALYSIS & RENDERING ENGINE ---
+            function renderAnalysisSidebar(allStations) {
+                const providerCount = Object.keys(state.stationData).length;
+
+
+                if (providerCount < 2) {
+                    infoPlaceholder.classList.remove('hidden');
+                    infoContent.classList.add('hidden');
+                    return;
+                }
+                
+                let stationsForAnalysis;
+let filterForAnalysis;
+
+if (state.showTetradsOnly) {
+    filterForAnalysis = 'tetrads';
+    stationsForAnalysis = allStations.filter(s => s.isTetradPaired);
+} else if (state.showTriadsOnly) {
+    filterForAnalysis = 'triads';
+    stationsForAnalysis = allStations.filter(s => s.isTriadPaired);
+} else {
+    filterForAnalysis = 'all';
+    stationsForAnalysis = allStations.filter(s => s.isPaired || s.isTriadPaired || s.isTetradPaired);
+}
+
+                const providerTotals = {};
+                Object.keys(state.stationData).forEach(provider => {
+                    providerTotals[provider] = allStations.filter(s => s.provider === provider).length;
+                });
+
+                const metric = state.analysisMetric;
+                const bestDealStats = calculateBestDealStats(allStations, metric, filterForAnalysis);
+                const priceStats = calculatePriceStatistics(stationsForAnalysis, metric);
+                const bucketStats = calculateBucketCounts(stationsForAnalysis, metric);
+                const matchupStats = calculateMatchupAnalysis(stationsForAnalysis, metric);
+                
+                let analysisHtml = '';
+                if (bestDealStats) analysisHtml += renderBestDealSection(bestDealStats, metric);
+                if (priceStats) analysisHtml += renderPriceStatisticsSection(priceStats, metric);
+                if (bucketStats) analysisHtml += renderBucketSection(bucketStats, metric, providerTotals);
+                if (matchupStats) analysisHtml += renderMatchupAnalysisSection(matchupStats);
+
+                infoContent.innerHTML = analysisHtml;
+                infoPlaceholder.classList.add('hidden');
+                infoContent.classList.remove('hidden');
+                attachSidebarEventListeners();
+            }
+            
+            function calculateMedian(arr) {
+                if (!arr || arr.length === 0) return 'N/A';
+                const sortedArr = [...arr].sort((a, b) => a - b);
+                const mid = Math.floor(sortedArr.length / 2);
+                return sortedArr.length % 2 !== 0 ? sortedArr[mid] : (sortedArr[mid - 1] + sortedArr[mid]) / 2;
+            }
+
+            function calculateBestDealStats(allStations, metric, filter = 'all') {
+    const providerCount = Object.keys(state.stationData).length;
+    if (providerCount < 2) return null;
+
+    const isHigherBetter = metric === 'savings';
+    const wins = {};
+    Object.keys(state.stationData).forEach(p => wins[p] = 0);
+    const processedGroups = new Set();
+    
+    const stationsToCheck = allStations.filter(s => s.isPaired || s.isTriadPaired || s.isTetradPaired);
+
+    const findWinner = (group) => {
+        if (group.length === 0) return null;
+        let winner = group[0];
+        let bestValue = winner[metric];
+        if (isNaN(bestValue)) {
+            bestValue = isHigherBetter ? 0 : winner.retail;
+        }
+
+        for (let i = 1; i < group.length; i++) {
+            const competitor = group[i];
+            let competitorValue = competitor[metric];
+            if (isNaN(competitorValue)) {
+                competitorValue = isHigherBetter ? 0 : competitor.retail;
+            }
+            
+            if ((isHigherBetter && competitorValue > bestValue) || (!isHigherBetter && competitorValue < bestValue)) {
+                bestValue = competitorValue;
+                winner = competitor;
+            }
+        }
+        return winner;
+    };
+
+    for (const station of stationsToCheck) {
+        // --- NEW: Tetrad Win Calculation ---
+        if ((filter === 'all' || filter === 'tetrads') && station.isTetradPaired && station.tetrads) {
+            station.tetrads.forEach(partners => {
+                const competitorGroup = [station, ...partners];
+                const groupKey = competitorGroup.map(s => s.id).sort().join('|');
+                if (!processedGroups.has(groupKey)) {
+                    const winner = findWinner(competitorGroup);
+                    if (winner) wins[winner.provider]++;
+                    processedGroups.add(groupKey);
+                }
+            });
+        }
+        
+        // --- Triad Win Calculation ---
+        if ((filter === 'all' || filter === 'triads') && station.isTriadPaired && station.triads) {
+            station.triads.forEach(partners => {
+                const competitorGroup = [station, ...partners];
+                const groupKey = competitorGroup.map(s => s.id).sort().join('|');
+                if (!processedGroups.has(groupKey)) {
+                    const winner = findWinner(competitorGroup);
+                    if (winner) wins[winner.provider]++;
+                    processedGroups.add(groupKey);
+                }
+            });
+        }
+        
+        // --- Pair Win Calculation ---
+        if ((filter === 'all' || filter === 'pairs') && station.isPaired) {
+            station.competitors.forEach(competitor => {
+                const competitorGroup = [station, competitor];
+                const groupKey = competitorGroup.map(s => s.id).sort().join('|');
+                if (!processedGroups.has(groupKey)) {
+                    const winner = findWinner(competitorGroup);
+                    if (winner) wins[winner.provider]++;
+                    processedGroups.add(groupKey);
+                }
+            });
+        }
+    }
+    
+    const totalWins = Object.values(wins).reduce((a, b) => a + b, 0);
+    if (totalWins === 0) return null;
+
+    const results = Object.entries(wins).map(([provider, count]) => ({
+        provider,
+        count,
+        percentage: (count / totalWins) * 100
+    })).sort((a, b) => b.count - a.count);
+
+    return { results, total: totalWins };
+}
+
+            
+
+            function calculatePriceStatistics(allStations, metric) {
+                const stats = {};
+                const isSavings = metric === 'savings';
+                Object.keys(state.stationData).forEach(provider => {
+                    const prices = allStations
+                        .filter(s => s.provider === provider)
+                        .map(s => {
+                            let value = s[metric];
+                            if (isNaN(value)) value = isSavings ? 0 : s.retail;
+                            return value;
+                        })
+                        .filter(p => !(isSavings && p === 0) && !isNaN(p))
+                        .sort((a, b) => a - b);
+                    
+                    if (prices.length === 0) {
+                        stats[provider] = { avg: 'N/A', median: 'N/A', percentile70: 'N/A' };
+                        return;
+                    };
+                    
+                    const sum = prices.reduce((a, b) => a + b, 0);
+                    stats[provider] = {
+                        avg: sum / prices.length,
+                        median: prices.length % 2 === 0 ? (prices[prices.length/2-1] + prices[prices.length/2]) / 2 : prices[Math.floor(prices.length/2)],
+                        percentile70: prices[Math.floor(prices.length * 0.7)]
+                    };
+                });
+                return Object.keys(stats).length > 0 ? stats : null;
+            }
+
+            function calculateBucketCounts(allStations, metric) {
+                const isSavings = metric === 'savings';
+                const validValues = allStations
+                    .map(s => {
+                        let value = s[metric];
+                        if (isNaN(value)) value = isSavings ? 0 : s.retail;
+                        return value;
+                    })
+                    .filter(p => !(isSavings && p === 0) && !isNaN(p));
+
+                if (validValues.length === 0) return null;
+                
+                const minPrice = Math.floor(Math.min(...validValues) * 10) / 10;
+                const maxPrice = Math.ceil(Math.max(...validValues) * 10) / 10;
+                const increment = metric === 'savings' ? 0.05 : 0.1;
+                
+                const buckets = {};
+                for (let p = minPrice; p <= maxPrice; p += increment) {
+                    buckets[p.toFixed(2)] = Object.fromEntries(Object.keys(state.stationData).map(prov => [prov, 0]));
+                }
+
+                allStations.forEach(s => {
+                    let value = s[metric];
+                    if (isNaN(value)) value = isSavings ? 0 : s.retail;
+                    if (isNaN(value) || (isSavings && value === 0)) return;
+
+                    const bucketKey = (Math.floor(value / increment) * increment).toFixed(2);
+                    if (buckets[bucketKey]) {
+                        buckets[bucketKey][s.provider]++;
+                    }
+                });
+                
+                const maxCountInBucket = Math.max(0, ...Object.values(buckets).map(b => Math.max(...Object.values(b))));
+                return { buckets, maxCountInBucket };
+            }
+
+            function calculateMatchupAnalysis(allCompetitiveStations, metric) {
+                const providerNames = Object.keys(state.stationData).sort();
+                if (providerNames.length < 2) return null;
+
+                const matchups = {};
+                const processedGroups = new Set();
+                
+                // Use 'retail' if selected, otherwise default to 'discounted' price.
+                const comparisonMetric = (metric === 'retail') ? 'retail' : 'discounted';
+
+                const findWinner = (group) => {
+                    if (group.length < 2) return { winner: null, losers: [] };
+                    let winner = group[0];
+                    let bestValue = winner[comparisonMetric];
+
+                    for (let i = 1; i < group.length; i++) {
+                        const competitor = group[i];
+                        if (competitor[comparisonMetric] < bestValue) {
+                            bestValue = competitor[comparisonMetric];
+                            winner = competitor;
+                        }
+                    }
+                    const losers = group.filter(s => s.id !== winner.id);
+                    return { winner, losers };
+                };
+
+                const addMatchup = (winner, losers) => {
+                    if (!winner || losers.length === 0) return;
+                    const opponentKey = losers.map(l => l.provider).sort().join(',');
+                    const matchupKey = `${winner.provider}>${opponentKey}`;
+                    if (!matchups[matchupKey]) {
+                        matchups[matchupKey] = { count: 0, prices: {} };
+                        providerNames.forEach(p => matchups[matchupKey].prices[p] = []);
+                    }
+                    matchups[matchupKey].count++;
+                    matchups[matchupKey].prices[winner.provider].push(winner.discounted);
+                    losers.forEach(loser => {
+                        matchups[matchupKey].prices[loser.provider].push(loser.discounted);
+                    });
+                };
+
+                if (state.competitiveFilter === 'triads') {
+                    allCompetitiveStations.forEach(station => {
+                        if (station.isTriadPaired && station.triads.length > 0) {
+                            station.triads.forEach(partners => {
+                                const group = [station, ...partners];
+                                const groupKey = group.map(s => s.id).sort().join('|');
+                                if (processedGroups.has(groupKey)) return;
+                                processedGroups.add(groupKey);
+
+                                const { winner: overallWinner, losers: overallLosers } = findWinner(group);
+                                addMatchup(overallWinner, overallLosers);
+
+                                const [s1, s2, s3] = group;
+                                const { winner: w12, losers: l12 } = findWinner([s1, s2]);
+                                addMatchup(w12, l12);
+                                
+                                const { winner: w13, losers: l13 } = findWinner([s1, s3]);
+                                addMatchup(w13, l13);
+
+                                const { winner: w23, losers: l23 } = findWinner([s2, s3]);
+                                addMatchup(w23, l23);
+                            });
+                        }
+                    });
+                } else {
+                    allCompetitiveStations.forEach(station => {
+                        if (station.isTriadPaired && station.triads.length > 0) {
+                            station.triads.forEach(partners => {
+                                const group = [station, ...partners];
+                                const groupKey = group.map(s => s.id).sort().join('|');
+                                if (processedGroups.has(groupKey)) return;
+                                processedGroups.add(groupKey);
+                                const { winner, losers } = findWinner(group);
+                                addMatchup(winner, losers);
+                            });
+                        }
+                        
+                        if (station.isPaired && station.competitors.length > 0) {
+                            station.competitors.forEach(competitor => {
+                                const group = [station, competitor];
+                                const groupKey = group.map(s => s.id).sort().join('|');
+                                if (processedGroups.has(groupKey)) return;
+                                processedGroups.add(groupKey);
+                                const { winner, losers } = findWinner(group);
+                                addMatchup(winner, losers);
+                            });
+                        }
+                    });
+                }
+
+                const results = [];
+                for (const key in matchups) {
+                    const [winner, opponentsStr] = key.split('>');
+                    const opponents = opponentsStr.split(',');
+                    const data = matchups[key];
+                    if (data.count === 0) continue;
+
+                    const row = { winner, opponents, count: data.count, medianPrices: {} };
+                    for (const provider in data.prices) {
+                        if (data.prices[provider].length > 0) {
+                            row.medianPrices[provider] = calculateMedian(data.prices[provider]);
+                        }
+                    }
+                    results.push(row);
+                }
+                
+                return results;
+            }
+
+            function renderBestDealSection(stats, metric) {
+                const metricMap = { discounted: 'Best Deal', retail: 'Best Retail Deal', savings: 'Best Savings' };
+                const title = metricMap[metric] || 'Best Deal';
+                
+                let gradientStops = [];
+                let currentPercentage = 0;
+                stats.results.forEach(r => {
+                    const color = providerColors[r.provider] || '#6b7280';
+                    gradientStops.push(`${color} ${currentPercentage}% ${currentPercentage + r.percentage}%`);
+                    currentPercentage += r.percentage;
+                });
+                
+                const tableRows = stats.results.map(r => `
+                    <tr class="border-b border-gray-700/50 text-xs">
+                        <td class="py-1.5 px-2 flex items-center"><span class="w-2 h-2 rounded-full mr-2" style="background-color: ${providerColors[r.provider] || '#6b7280'};"></span>${r.provider}</td>
+                        <td class="py-1.5 px-2 text-right font-mono">${r.count}</td>
+                        <td class="py-1.5 px-2 text-right font-mono">${r.percentage.toFixed(0)}%</td>
+                    </tr>`).join('');
+
+                return `
+                    <div class="bg-gray-800 p-2 rounded-lg">
+                        <h3 class="font-bold text-sm text-blue-400 mb-2">${title} in Competitive Zones (${stats.total} total)</h3>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-16 h-16 rounded-full" style="background: conic-gradient(${gradientStops.join(', ')});"></div>
+                            <div class="flex-grow">
+                                <table class="w-full">
+                                    <thead class="text-xs text-white uppercase"><tr class="bg-gray-900 border-b border-gray-700"><th class="py-1.5 px-2 font-semibold text-left">Provider</th><th class="py-1.5 px-2 font-semibold text-right"># Wins</th><th class="py-1.5 px-2 font-semibold text-right">% Wins</th></tr></thead>
+                                    <tbody>${tableRows}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            function renderPriceStatisticsSection(stats, metric) {
+                const metricMap = { discounted: 'Discounted Price', retail: 'Retail Price', savings: 'Savings' };
+                const title = `${metricMap[metric]} Statistics`;
+                const prefix = metric === 'savings' ? '' : '$';
+
+                const rows = Object.entries(stats).map(([provider, data]) => {
+                    const avgText = typeof data.avg === 'number' ? `${prefix}${data.avg.toFixed(2)}` : data.avg;
+                    const medianText = typeof data.median === 'number' ? `${prefix}${data.median.toFixed(2)}` : data.median;
+                    const p70Text = typeof data.percentile70 === 'number' ? `${prefix}${data.percentile70.toFixed(2)}` : data.percentile70;
+
+                    return `
+                    <tr class="border-b border-gray-700/50 text-xs">
+                        <td class="py-1.5 px-2 font-semibold" style="color: ${providerColors[provider] || '#FFF'};">${provider}</td>
+                        <td class="py-1.5 px-2 text-right font-mono">${avgText}</td>
+                        <td class="py-1.5 px-2 text-right font-mono">${medianText}</td>
+                        <td class="py-1.5 px-2 text-right font-mono">${p70Text}</td>
+                    </tr>`
+                }).join('');
+
+                return `
+                    <div class="bg-gray-800 p-2 rounded-lg">
+                        <div class="flex items-center space-x-2 mb-2">
+                            <h3 class="font-bold text-sm text-blue-400">${title} by Provider</h3>
+                            ${metric === 'savings' ? `
+                                <div class="relative group cursor-pointer">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-gray-900 text-gray-300 text-xs text-center rounded-md p-2 border border-gray-600 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                        Stations with $0.00 (no discount) are excluded from this calculation.
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <table class="w-full">
+                           <thead class="text-xs text-white uppercase"><tr class="bg-gray-900 border-b border-gray-700"><th class="py-1.5 px-2 font-semibold text-left">Provider</th><th class="py-1.5 px-2 font-semibold text-right">Average</th><th class="py-1.5 px-2 font-semibold text-right">Median</th><th class="py-1.5 px-2 font-semibold text-right">70%-ile</th></tr></thead>
+                           <tbody>${rows}</tbody>
+                        </table>
+                    </div>`;
+            }
+
+            function renderBucketSection(stats, metric, providerTotals) {
+                const providers = Object.keys(state.stationData);
+                const metricMap = { discounted: 'Discounted Price', retail: 'Retail Price', savings: 'Savings' };
+                const title = `${metricMap[metric]} Distribution`;
+                const prefix = metric === 'savings' ? '' : '$';
+
+                const filteredBuckets = Object.entries(stats.buckets).filter(([_, counts]) => Object.values(counts).some(c => c > 0));
+
+                const tableRows = filteredBuckets.map(([bucket, counts]) => {
+                    const maxCountInRow = Math.max(0, ...Object.values(counts));
+                    return `
+                    <tr class="text-xs border-b border-gray-700/50">
+                        <td class="py-1.5 px-2 font-mono text-gray-300">${prefix}${bucket}</td>
+                        ${providers.map(p => {
+                            const count = counts[p];
+                            const total = providerTotals[p] || 0;
+                            const percentage = total > 0 ? (count / total) * 100 : 0;
+                            const percentageText = count > 0 ? ` <span class="text-gray-500 font-normal">(${percentage.toFixed(0)}%)</span>` : '';
+                            const maxClass = (count === maxCountInRow && maxCountInRow > 0) ? 'font-bold' : '';
+                            const colorClass = count > 0 ? 'text-white' : 'text-gray-600';
+                            return `<td class="py-1.5 px-2 text-right font-mono ${colorClass} ${maxClass}">${count}${percentageText}</td>`;
+                        }).join('')}
+                    </tr>`;
+                }).join('');
+                
+                const chartBars = filteredBuckets.map(([bucket, counts]) => {
+                    const allCountsString = JSON.stringify(counts);
+                    const barSegments = providers.map(p => {
+                        const height = stats.maxCountInBucket > 0 ? (counts[p] / stats.maxCountInBucket) * 100 : 0;
+                        return `<div class="w-full" style="height: ${height}%; background-color: ${providerColors[p]};"></div>`;
+                    }).join('');
+                    return `<div class="w-4 h-24 flex flex-col-reverse items-center chart-bar-column" 
+                                 data-bucket-value="${prefix}${bucket}"
+                                 data-metric-name="${metricMap[metric]}"
+                                 data-all-counts='${allCountsString}'>${barSegments}</div>`;
+                }).join('');
+
+                const legendItems = providers.map(p => `
+                    <div class="flex items-center"><span class="w-2.5 h-2.5 rounded-full mr-1.5" style="background-color: ${providerColors[p] || '#6b7280'};"></span>${p}</div>`).join('');
+
+                return `
+                    <div class="bg-gray-800 p-2 rounded-lg">
+                        <div class="flex justify-between items-center mb-2">
+                            <div class="flex items-center space-x-2">
+                                <h3 class="font-bold text-sm text-blue-400">${title} by Bucket</h3>
+                                ${metric === 'savings' ? `
+                                    <div class="relative group cursor-pointer">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-gray-900 text-gray-300 text-xs text-center rounded-md p-2 border border-gray-600 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                            Stations with $0.00 (no discount) are excluded from this calculation.
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="flex space-x-1 text-xs">
+                                <button id="show-table-btn" class="bg-blue-600 px-2 py-0.5 rounded-md">Table</button>
+                                <button id="show-chart-btn" class="bg-gray-700 px-2 py-0.5 rounded-md">Chart</button>
+                            </div>
+                        </div>
+                        <div id="bucket-table-container">
+                             <div class="h-64 overflow-y-auto custom-scrollbar">
+                                <table class="w-full">
+                                    <thead><tr class="text-left text-xs text-white sticky top-0 bg-gray-900 border-b border-gray-700"><th class="py-1.5 px-2 font-semibold">Bucket</th>${providers.map(p => `<th class="py-1.5 px-2 text-right font-semibold" style="color:${providerColors[p] || '#FFF'}">${p}</th>`).join('')}</tr></thead>
+                                    <tbody>${tableRows}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="bucket-chart-container" class="hidden">
+                            <div class="flex justify-center space-x-4 text-xs text-gray-400 mb-2">${legendItems}</div>
+                            <div class="flex space-x-1 items-end bg-gray-900/50 p-1 rounded-md overflow-x-auto custom-scrollbar h-40">${chartBars}</div>
+                        </div>
+                    </div>`;
+            }
+
+            function renderMatchupAnalysisSection(stats) {
+                if (!stats || stats.length === 0) return '';
+                
+                const providerNames = Object.keys(state.stationData).sort();
+
+                stats.sort((a, b) => {
+                    if (b.opponents.length !== a.opponents.length) {
+                        return b.opponents.length - a.opponents.length;
+                    }
+                    return b.count - a.count;
+                });
+
+                const header = `
+                    <tr class="text-left text-xs text-white sticky top-0 bg-gray-900 border-b border-gray-700">
+                        <th class="py-1.5 px-2 font-semibold">When Winner</th>
+                        <th class="py-1.5 px-2 font-semibold">Compared Against</th>
+                        ${providerNames.map(p => `<th class="py-1.5 px-2 text-right font-semibold" style="color: ${providerColors[p] || '#FFF'};">${p} Price</th>`).join('')}
+                        <th class="py-1.5 px-2 text-right font-semibold">Count</th>
+                    </tr>
+                `;
+
+                const rows = stats.map(row => {
+                    return `
+                        <tr class="text-xs border-b border-gray-700/50">
+                            <td class="py-1.5 px-2">${row.winner}</td>
+                            <td class="py-1.5 px-2">${row.opponents.join(', ')}</td>
+                            ${providerNames.map(p => {
+                                const price = row.medianPrices[p];
+                                return `<td class="py-1.5 px-2 text-right font-mono">${typeof price === 'number' ? `$${price.toFixed(2)}` : ''}</td>`;
+                            }).join('')}
+                            <td class="py-1.5 px-2 text-right font-mono">${row.count.toLocaleString()}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-gray-800 p-2 rounded-lg">
+                        <h3 class="font-bold text-sm text-blue-400 mb-2">Competitive Matchup Analysis</h3>
+                        <div class="h-64 overflow-y-auto custom-scrollbar">
+                            <table class="w-full">
+                                <thead>${header}</thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function attachSwitcherListeners() {
+                document.querySelectorAll('#competitive-filter-switcher .filter-btn').forEach(btn => {
+                    if (btn.dataset.listenerAttached) return;
+                    btn.addEventListener('click', (e) => {
+                        const newFilter = e.currentTarget.dataset.filter;
+                        state.competitiveFilter = newFilter;
+                        updateMapAndUI();
+                    });
+                    btn.dataset.listenerAttached = 'true';
+                });
+            }
+
+            function attachSidebarEventListeners() {
+                attachSwitcherListeners();
+
+                const showTableBtn = document.getElementById('show-table-btn');
+                const showChartBtn = document.getElementById('show-chart-btn');
+                const tableContainer = document.getElementById('bucket-table-container');
+                const chartContainer = document.getElementById('bucket-chart-container');
+
+                if (showTableBtn) {
+                    showTableBtn.addEventListener('click', () => {
+                        tableContainer.classList.remove('hidden');
+                        chartContainer.classList.add('hidden');
+                        showTableBtn.classList.replace('bg-gray-700', 'bg-blue-600');
+                        showChartBtn.classList.replace('bg-blue-600', 'bg-gray-700');
+                    });
+                }
+                if (showChartBtn) {
+                    showChartBtn.addEventListener('click', () => {
+                        tableContainer.classList.add('hidden');
+                        chartContainer.classList.remove('hidden');
+                        showChartBtn.classList.replace('bg-gray-700', 'bg-blue-600');
+                        showTableBtn.classList.replace('bg-blue-600', 'bg-gray-700');
+                    });
+                }
+
+                const tooltip = document.getElementById('chart-tooltip');
+                document.querySelectorAll('.chart-bar-column').forEach(bar => {
+                    bar.addEventListener('mouseover', (e) => {
+                        const data = e.currentTarget.dataset;
+                        const allCounts = JSON.parse(data.allCounts);
+                        const providerColors = { 'Pilot Flying J': '#2563eb', 'Bobtail': '#dc2626', 'TA': '#16a34a', 'Mudflap': '#f97316', 'Other': '#6b7280' };
+
+                        let tooltipContent = `<div class="font-semibold mb-1">${data.metricName}: ${data.bucketValue}</div>`;
+                        tooltipContent += Object.entries(allCounts).map(([provider, count]) => {
+                            if (count > 0) {
+                                return `<div class="flex items-center"><span class="w-2 h-2 rounded-full mr-2" style="background-color: ${providerColors[provider] || '#6b7280'};"></span>${provider}: ${count}</div>`;
+                            }
+                            return '';
+                        }).join('');
+
+                        tooltip.innerHTML = tooltipContent;
+                        tooltip.classList.remove('hidden');
+                    });
+
+                    bar.addEventListener('mousemove', (e) => {
+                        tooltip.style.left = `${e.clientX + 15}px`;
+                        tooltip.style.top = `${e.clientY + 15}px`;
+                    });
+
+                    bar.addEventListener('mouseleave', () => {
+                        tooltip.classList.add('hidden');
+                    });
+                });
+            }
+
+            // --- CONTROLS & EVENT LISTENERS ---
+            document.getElementById('analysis-metric-select').addEventListener('change', (e) => {
+    state.analysisMetric = e.target.value;
+    updateMapAndUI();
+});
+
+// --- Custom State Dropdown Logic ---
+const stateInput = document.getElementById('state-input');
+const statePanel = document.getElementById('state-dropdown-panel');
+const stateContainer = document.getElementById('state-dropdown-container');
+
+// Show dropdown on click
+stateInput.addEventListener('click', (e) => {
+    e.stopPropagation();
+    updateStateSelector(stateInput.value); // Re-populate with current filter
+    statePanel.classList.toggle('hidden');
+});
+
+// Filter list as user types
+stateInput.addEventListener('input', () => {
+    updateStateSelector(stateInput.value);
+    statePanel.classList.remove('hidden'); // Ensure panel is visible while typing
+});
+
+// If input is cleared, reset to all states
+stateInput.addEventListener('change', () => {
+    if (stateInput.value === '') {
+        state.selectedState = 'all';
+        updateMapAndUI();
+        map.setView([39.8283, -98.5795], 5);
+    }
+});
+
+// Hide dropdown when clicking anywhere else on the page
+document.addEventListener('click', (e) => {
+    if (!stateContainer.contains(e.target)) {
+        statePanel.classList.add('hidden');
+        // Revert input to last valid selection if it wasn't confirmed
+        if (state.selectedState === 'all') {
+            stateInput.value = '';
+        } else {
+            stateInput.value = state.selectedState;
+        }
+    }
+});
+
+radiusSlider.addEventListener('change', (e) => {
+    let radius = parseInt(e.target.value);
+    if (isNaN(radius) || radius < 1) {
+        radius = 1; 
+        e.target.value = radius;
+    }
+    state.clusterRadius = radius;
+    updateMapAndUI();
+});
+            
+            hideCheckbox.addEventListener('change', (e) => {
+                state.hideUnclustered = e.target.checked;
+                applyVisibilityFilter();
+            });
+            
+            showTriadsCheckbox.addEventListener('change', (e) => {
+                state.showTriadsOnly = e.target.checked;
+                // If turning on Triads, turn off Tetrads
+                if (e.target.checked && state.showTetradsOnly) {
+                    state.showTetradsOnly = false;
+                    document.getElementById('show-tetrads-only').checked = false;
+                }
+                applyVisibilityFilter();
+            });
+
+            // New listener for the Tetrads checkbox
+            document.getElementById('show-tetrads-only').addEventListener('change', (e) => {
+                state.showTetradsOnly = e.target.checked;
+                // If turning on Tetrads, turn off Triads
+                if (e.target.checked && state.showTriadsOnly) {
+                    state.showTriadsOnly = false;
+                    document.getElementById('show-triads-only').checked = false;
+                }
+                applyVisibilityFilter();
+            });
+
+            function updateLineVisibility() {
+                if (!state.showLines) {
+                    if (map.hasLayer(state.linesLayer)) {
+                        map.removeLayer(state.linesLayer);
+                    }
+                    return;
+                }
+
+                if (map.getZoom() >= 9) {
+                    if (!map.hasLayer(state.linesLayer)) {
+                        map.addLayer(state.linesLayer);
+                    }
+                } else {
+                    if (map.hasLayer(state.linesLayer)) {
+                        map.removeLayer(state.linesLayer);
+                    }
+                }
+            }
+
+        map.on('zoomend', updateLineVisibility);
+
+        function applyVisibilityFilter() {
+                state.markers.clearLayers();
+                const visibleMarkers = allMarkers.filter(marker => {
+                    const s = marker.stationData;
+                    if (state.showTetradsOnly) return s.isTetradPaired;
+                    if (state.showTriadsOnly) return s.isTriadPaired;
+                    if (state.hideUnclustered) return s.isPaired || s.isTriadPaired || s.isTetradPaired;
+                    return true;
+                });
+                state.markers.addLayers(visibleMarkers);
+
+                state.linesLayer.clearLayers();
+                
+                const drawnLinks = new Set();
+                const currentOpacity = state.lineOpacity;
+                const fillOpacity = Math.max(0.05, currentOpacity * 0.15); 
+
+                allMarkers.forEach(marker => {
+                    const station = marker.stationData;
+
+                    if (station.isTetradPaired && station.tetrads.length > 0) {
+                         station.tetrads.forEach(partners => {
+                            const ids = [station.id, partners[0].id, partners[1].id, partners[2].id].sort().join('-');
+                             if (!drawnLinks.has(ids)) {
+                                // --- Fix for drawing a reliable 4-sided polygon ---
+                                const allPoints = [station, ...partners];
+                                
+                                // 1. Calculate the geometric center (centroid) of the 4 points.
+                                let totalLat = 0, totalLon = 0;
+                                allPoints.forEach(p => { totalLat += p.lat; totalLon += p.lon; });
+                                const centerLat = totalLat / 4;
+                                const centerLon = totalLon / 4;
+                                
+                                // 2. Sort the points by their angle around the center.
+                                allPoints.sort((a, b) => {
+                                    const angleA = Math.atan2(a.lat - centerLat, a.lon - centerLon);
+                                    const angleB = Math.atan2(b.lat - centerLat, b.lon - centerLon);
+                                    return angleA - angleB;
+                                });
+
+                                // 3. Create the ordered array of coordinates for the polygon.
+                                const sortedCoords = allPoints.map(p => [p.lat, p.lon]);
+                                
+                                // 4. Draw the polygon with the sorted points and new blue color.
+                                L.polygon(sortedCoords, { color: '#3b82f6', weight: 2, opacity: currentOpacity, fillOpacity: fillOpacity }).addTo(state.linesLayer);
+                                drawnLinks.add(ids);
+                            }
+                        });
+                    }
+                    
+                    if (station.isTriadPaired && !state.showTetradsOnly && station.triads.length > 0) {
+                        station.triads.forEach(partners => {
+                            const ids = [station.id, partners[0].id, partners[1].id].sort().join('-');
+                            if (!drawnLinks.has(ids)) {
+                                const points = [ [station.lat, station.lon], [partners[0].lat, partners[0].lon], [partners[1].lat, partners[1].lon] ];
+                                L.polygon(points, { color: '#16a34a', weight: 2, opacity: currentOpacity, fillOpacity: fillOpacity }).addTo(state.linesLayer);
+                                drawnLinks.add(ids);
+                            }
+                        });
+                    }
+                    
+                    if (station.isPaired && !state.showTriadsOnly && !state.showTetradsOnly) {
+                        station.competitors.forEach(competitor => {
+                            const ids = [station.id, competitor.id].sort().join('-');
+                            if(!drawnLinks.has(ids)) {
+                                L.polyline([[station.lat, station.lon], [competitor.lat, competitor.lon]], { color: '#e74c3c', weight: 2, opacity: currentOpacity, dashArray: '5, 5' }).addTo(state.linesLayer);
+                                drawnLinks.add(ids);
+                            }
+                        });
+                    }
+                });
+            }
+
+            updateProviderList();
+            renderAnalysisSidebar([]);
+        });
+    </script>
+</body>
+</html>
